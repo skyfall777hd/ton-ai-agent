@@ -1552,7 +1552,7 @@ export function ChatShell() {
               type="text"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask TON AI about your wallet, swap, or username..."
+              placeholder="Ask about wallet, swap, or username..."
             />
             <button
               className="composer-send-button"
