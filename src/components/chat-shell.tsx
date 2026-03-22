@@ -635,7 +635,6 @@ export function ChatShell() {
   const [activeChatId, setActiveChatId] = useState<string>(initialChatThread.id);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [expandedPortfolioMessages, setExpandedPortfolioMessages] = useState<
     Record<string, boolean>
   >({});
@@ -646,7 +645,6 @@ export function ChatShell() {
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const lastMessageRef = useRef<HTMLElement | null>(null);
-  const viewportBaseHeightRef = useRef(0);
   const bottomLockTimeoutsRef = useRef<number[]>([]);
   const bottomLockIntervalRef = useRef<number | null>(null);
   const openFreshChatRef = useRef<() => void>(() => {});
@@ -827,18 +825,8 @@ export function ChatShell() {
       const visibleHeight = Math.round(
         Math.min(window.innerHeight, viewport?.height ?? window.innerHeight)
       );
-      const visibleBottom = Math.round((viewport?.offsetTop ?? 0) + visibleHeight);
-
-      viewportBaseHeightRef.current = Math.max(
-        viewportBaseHeightRef.current,
-        window.innerHeight,
-        Math.round(visibleBottom)
-      );
-
-      const keyboardInset = Math.max(0, viewportBaseHeightRef.current - visibleBottom);
 
       root.style.setProperty("--app-height", `${visibleHeight}px`);
-      root.style.setProperty("--viewport-bottom-offset", `${keyboardInset}px`);
     };
 
     const syncViewportAndReveal = () => {
@@ -861,35 +849,8 @@ export function ChatShell() {
       window.removeEventListener("resize", syncViewportAndReveal);
       clearBottomLock();
       root.style.removeProperty("--app-height");
-      root.style.setProperty("--viewport-bottom-offset", "0px");
     };
   }, []);
-
-  useEffect(() => {
-    const input = composerInputRef.current;
-
-    if (!input) {
-      return;
-    }
-
-    const handleFocus = () => {
-      setIsKeyboardOpen(true);
-      lockChatToBottom();
-    };
-
-    const handleBlur = () => {
-      setIsKeyboardOpen(false);
-      clearBottomLock();
-    };
-
-    input.addEventListener("focus", handleFocus);
-    input.addEventListener("blur", handleBlur);
-
-    return () => {
-      input.removeEventListener("focus", handleFocus);
-      input.removeEventListener("blur", handleBlur);
-    };
-  }, [activeChatId, messages.length]);
 
   useEffect(() => {
     if (!wallet) {
@@ -1402,7 +1363,7 @@ export function ChatShell() {
           ))}
         </div>
       </aside>
-      <section className={`chat-frame ${isKeyboardOpen ? "keyboard-open" : ""}`}>
+      <section className="chat-frame">
         <header className="chat-header">
           <div className="chat-title">
             <button

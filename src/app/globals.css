@@ -5,8 +5,6 @@
 :root {
   --app-height: 100dvh;
   --app-top-offset: 0px;
-  --viewport-bottom-offset: 0px;
-  --keyboard-lift: 0px;
   --tg-bg: #0f1722;
   --tg-panel: #101b27;
   --tg-panel-strong: #122030;
@@ -516,10 +514,6 @@ textarea {
   border-color: rgba(46, 166, 255, 0.28);
 }
 
-.chat-frame.keyboard-open .message-list {
-  padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px));
-}
-
 .message {
   max-width: min(720px, 82%);
   min-width: 0;
@@ -578,10 +572,6 @@ textarea {
   padding: 14px 18px calc(18px + env(safe-area-inset-bottom, 0px));
   background: transparent;
   pointer-events: none;
-}
-
-.chat-frame.keyboard-open .composer {
-  bottom: 0;
 }
 
 .composer-form {
@@ -1192,14 +1182,6 @@ textarea {
   .quick-prompt-button {
     padding: 16px 18px;
     border-radius: 18px;
-  }
-
-  .chat-frame.keyboard-open .message-list {
-    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .chat-frame.keyboard-open .composer {
-    bottom: 0;
   }
 
   .composer-form {

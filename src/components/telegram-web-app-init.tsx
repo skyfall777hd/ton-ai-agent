@@ -32,19 +32,48 @@ export function TelegramWebAppInit() {
   useEffect(() => {
     const webApp = window.Telegram?.WebApp;
     const root = document.documentElement;
+    const pendingTimeouts = new Set<number>();
+    let frameId = 0;
 
     if (!webApp) {
       return;
     }
 
     const syncTelegramViewport = () => {
+      const liveViewportHeight =
+        webApp.viewportHeight ?? window.visualViewport?.height ?? window.innerHeight;
+      const stableViewportHeight = webApp.viewportStableHeight;
       const height = Math.round(
-        webApp.viewportStableHeight ?? webApp.viewportHeight ?? window.innerHeight
+        liveViewportHeight > 0
+          ? liveViewportHeight
+          : stableViewportHeight ?? window.innerHeight
       );
 
       if (height > 0) {
         root.style.setProperty("--app-height", `${height}px`);
       }
+    };
+
+    const scheduleViewportSync = () => {
+      syncTelegramViewport();
+
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        syncTelegramViewport();
+      });
+
+      [60, 180, 360].forEach((delay) => {
+        const timeoutId = window.setTimeout(() => {
+          pendingTimeouts.delete(timeoutId);
+          syncTelegramViewport();
+        }, delay);
+
+        pendingTimeouts.add(timeoutId);
+      });
     };
 
     const openFullscreen = () => {
@@ -57,7 +86,7 @@ export function TelegramWebAppInit() {
         webApp.postEvent?.("web_app_request_fullscreen");
       }
 
-      syncTelegramViewport();
+      scheduleViewportSync();
     };
 
     webApp.ready?.();
@@ -87,24 +116,40 @@ export function TelegramWebAppInit() {
       openFullscreen();
     };
 
+    const handleViewportChanged = () => {
+      openFullscreen();
+      scheduleViewportSync();
+    };
+
     window.addEventListener("focus", handleFocus);
     window.addEventListener("pageshow", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    webApp.onEvent?.("viewportChanged", openFullscreen);
-    webApp.onEvent?.("fullscreenChanged", openFullscreen);
-    webApp.onEvent?.("activated", openFullscreen);
+    window.visualViewport?.addEventListener("resize", scheduleViewportSync);
+    window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
+    webApp.onEvent?.("viewportChanged", handleViewportChanged);
+    webApp.onEvent?.("fullscreenChanged", handleViewportChanged);
+    webApp.onEvent?.("activated", handleViewportChanged);
 
     return () => {
       retryTimers.forEach((timerId) => {
         window.clearTimeout(timerId);
       });
+      pendingTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      pendingTimeouts.clear();
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
       window.clearInterval(retryIntervalId);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("pageshow", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      webApp.offEvent?.("viewportChanged", openFullscreen);
-      webApp.offEvent?.("fullscreenChanged", openFullscreen);
-      webApp.offEvent?.("activated", openFullscreen);
+      window.visualViewport?.removeEventListener("resize", scheduleViewportSync);
+      window.visualViewport?.removeEventListener("scroll", scheduleViewportSync);
+      webApp.offEvent?.("viewportChanged", handleViewportChanged);
+      webApp.offEvent?.("fullscreenChanged", handleViewportChanged);
+      webApp.offEvent?.("activated", handleViewportChanged);
       root.style.removeProperty("--app-height");
     };
   }, []);
