@@ -1019,7 +1019,9 @@ export function parseIntentHeuristic(input: string): AgentIntent {
     lower.includes("how much does a telegram username cost") ||
     lower.includes("how much does username cost") ||
     lower.includes("how much does a username cost") ||
+    lower.includes("how much does the username cost") ||
     lower.includes("how much does username") ||
+    lower.includes("how much does the username") ||
     lower.includes("how much does a telegram username") ||
     lower.includes("telegram username cost") ||
     lower.includes("price of username") ||
@@ -1032,11 +1034,12 @@ export function parseIntentHeuristic(input: string): AgentIntent {
   ) {
     const usernameMatch =
       text.match(/@([a-zA-Z0-9_]{4,32})/) ??
+      text.match(/["“”']([a-zA-Z0-9_]{4,32})["“”']/) ??
       text.match(
         /\b(?:username|telegram username|юзернейм|ник)\b[\s:]+@?([a-zA-Z0-9_]{4,32})/i
       ) ??
       text.match(
-        /\b(?:how much does|price of)\s+(?:username\s+|telegram username\s+)?@?([a-zA-Z0-9_]{4,32})\b/i
+        /\b(?:how much does|price of)\s+(?:the\s+)?(?:username\s+|telegram username\s+)?["“”']?@?([a-zA-Z0-9_]{4,32})["“”']?\b/i
       );
     const usernameCandidate = usernameMatch?.[1]?.toLowerCase();
     const query =
