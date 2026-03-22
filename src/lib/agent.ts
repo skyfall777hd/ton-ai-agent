@@ -62,6 +62,16 @@ type AddressCheckData = {
   notes: string[];
 };
 
+type WalletTransaction = {
+  hash: string;
+  direction: "in" | "out" | "unknown";
+  amountTon?: string;
+  timestamp?: number;
+  from?: string;
+  to?: string;
+  comment?: string;
+};
+
 function isDefined<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined;
 }
@@ -78,6 +88,7 @@ const historyItemSchema = z.object({
           "buy",
           "send",
           "balance",
+          "transactions",
           "nft",
           "username_price",
           "fee_estimate",
@@ -128,6 +139,7 @@ const parsedIntentSchema = z.object({
     "buy",
     "send",
     "balance",
+    "transactions",
     "nft",
     "username_price",
     "fee_estimate",
@@ -154,6 +166,7 @@ const conversationStateSchema = z.object({
       "buy",
       "send",
       "balance",
+      "transactions",
       "nft",
       "username_price",
       "fee_estimate",
@@ -335,6 +348,17 @@ function createBaseIntent(action: AgentIntent["action"]): AgentIntent {
         summary: "",
         safetyNotes: [
           "Viewing the balance does not require a wallet signature.",
+          "If the wallet is not connected yet, the user should be asked to connect it first."
+        ]
+      };
+    case "transactions":
+      return {
+        action,
+        needsWallet: true,
+        needsConfirmation: false,
+        summary: "",
+        safetyNotes: [
+          "Viewing transaction history does not require a wallet signature.",
           "If the wallet is not connected yet, the user should be asked to connect it first."
         ]
       };
@@ -658,6 +682,8 @@ function summarizeIntent(intent: AgentIntent) {
       return "I can explain the contract in plain English.";
     case "balance":
       return "I can check the connected TON wallet balance.";
+    case "transactions":
+      return "I can show the most recent transactions for the connected TON wallet.";
     case "nft":
       return "I can show which NFTs are in the connected TON wallet.";
     case "swap":
@@ -917,6 +943,21 @@ export function parseIntentHeuristic(input: string): AgentIntent {
     lower.includes("my tokens") ||
     lower.includes("portfolio") ||
     lower.includes("holdings");
+  const asksForTransactions =
+    lower.includes("recent transactions") ||
+    lower.includes("latest transactions") ||
+    lower.includes("show transactions") ||
+    lower.includes("show my transactions") ||
+    lower.includes("transaction history") ||
+    lower.includes("wallet activity") ||
+    lower.includes("recent activity") ||
+    lower.includes("last transactions") ||
+    lower.includes("transfers history") ||
+    lower.includes("истори") && lower.includes("транзак") ||
+    lower.includes("последние транзак") ||
+    lower.includes("мои транзак") ||
+    lower.includes("операции по кошельку") ||
+    lower.includes("история кошелька");
   const asksForNfts =
     lower.includes(" nft") ||
     lower.startsWith("nft") ||
@@ -1025,6 +1066,10 @@ export function parseIntentHeuristic(input: string): AgentIntent {
 
   if (asksForBalance) {
     return finalizeIntent(createBaseIntent("balance"));
+  }
+
+  if (asksForTransactions) {
+    return finalizeIntent(createBaseIntent("transactions"));
   }
 
   if (asksForNfts) {
@@ -1148,7 +1193,7 @@ async function parseIntentWithOpenAI(
                   text:
                     "Извлеки намерение пользователя из диалога про TON на любом языке. Верни только JSON без markdown. " +
                     "Схема: {action, amount?, fromToken?, toToken?, recipient?, comment?}. " +
-                    "action одно из swap, sell, buy, send, balance, nft, username_price, unknown. " +
+                    "action одно из swap, sell, buy, send, balance, transactions, nft, username_price, unknown. " +
                     "Сначала пойми, что пользователь реально хочет сделать, даже если он пишет криво, с ошибками, коротко, неформально или смешивает языки. " +
                     "Если смысл запроса близок к поддерживаемой возможности, выбери ближайший подходящий action, а не unknown. " +
                     "unknown используй только если запрос действительно не относится к поддерживаемым возможностям assistant. " +
@@ -1990,6 +2035,133 @@ async function getWalletJettons(walletAddress?: string) {
 
       return Number(b.balance) - Number(a.balance);
     });
+}
+
+function shortenAddress(value?: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value.length <= 14) {
+    return value;
+  }
+
+  return `${value.slice(0, 6)}...${value.slice(-6)}`;
+}
+
+function decodeCommentFromMessage(message: Record<string, unknown> | undefined) {
+  if (!message) {
+    return null;
+  }
+
+  const msgDataText = typeof message.msg_data === "object" && message.msg_data
+    ? (message.msg_data as Record<string, unknown>).text
+    : undefined;
+
+  if (typeof msgDataText === "string" && msgDataText.trim()) {
+    return msgDataText.trim();
+  }
+
+  const comment =
+    typeof message.message === "string"
+      ? message.message
+      : typeof message.comment === "string"
+        ? message.comment
+        : null;
+
+  return comment?.trim() || null;
+}
+
+async function getWalletTransactions(walletAddress?: string): Promise<WalletTransaction[]> {
+  if (!walletAddress) {
+    return [];
+  }
+
+  const endpoint =
+    process.env.TON_API_ENDPOINT ?? "https://toncenter.com/api/v2/jsonRPC";
+  const apiKey = process.env.TON_API_KEY;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { "X-API-Key": apiKey } : {})
+    },
+    body: JSON.stringify({
+      id: 1,
+      jsonrpc: "2.0",
+      method: "getTransactions",
+      params: {
+        address: walletAddress,
+        limit: 5,
+        archival: true
+      }
+    }),
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await response.json()) as {
+    result?: Array<Record<string, unknown>>;
+  };
+
+  const normalizedWallet = walletAddress.toLowerCase();
+
+  return (payload.result ?? []).map((item) => {
+    const inMsg =
+      item.in_msg && typeof item.in_msg === "object"
+        ? item.in_msg as Record<string, unknown>
+        : undefined;
+    const outMsgs = Array.isArray(item.out_msgs)
+      ? item.out_msgs.filter((msg): msg is Record<string, unknown> => Boolean(msg && typeof msg === "object"))
+      : [];
+    const inSource = typeof inMsg?.source === "string" ? inMsg.source : undefined;
+    const inDestination = typeof inMsg?.destination === "string" ? inMsg.destination : undefined;
+    const firstOut = outMsgs[0];
+    const outDestination =
+      typeof firstOut?.destination === "string" ? firstOut.destination : undefined;
+    const rawValue =
+      typeof inMsg?.value === "string"
+        ? inMsg.value
+        : typeof firstOut?.value === "string"
+          ? firstOut.value
+          : undefined;
+    const amountTon =
+      rawValue && Number.isFinite(Number(rawValue))
+        ? (Number(rawValue) / 1_000_000_000).toFixed(3)
+        : undefined;
+    const hash =
+      typeof item.transaction_id === "object" && item.transaction_id
+        ? String((item.transaction_id as Record<string, unknown>).hash ?? "")
+        : "";
+    const timestamp =
+      typeof item.utime === "number"
+        ? item.utime
+        : typeof item.utime === "string"
+          ? Number(item.utime)
+          : undefined;
+
+    let direction: WalletTransaction["direction"] = "unknown";
+
+    if (inDestination?.toLowerCase() === normalizedWallet) {
+      direction = "in";
+    } else if (inSource?.toLowerCase() === normalizedWallet || outMsgs.length > 0) {
+      direction = "out";
+    }
+
+    return {
+      hash,
+      direction,
+      amountTon,
+      timestamp: Number.isFinite(timestamp) ? timestamp : undefined,
+      from: shortenAddress(inSource),
+      to: shortenAddress(outDestination ?? inDestination),
+      comment: decodeCommentFromMessage(inMsg) ?? decodeCommentFromMessage(firstOut) ?? undefined
+    };
+  });
 }
 
 async function getWalletNfts(walletAddress?: string): Promise<WalletNft[]> {
@@ -2876,6 +3048,10 @@ export async function generateAgentReply(rawInput: unknown) {
     intent.action === "balance"
       ? await getWalletJettons(parsed.walletAddress)
       : [];
+  const walletTransactions =
+    intent.action === "transactions"
+      ? await getWalletTransactions(parsed.walletAddress)
+      : [];
   const walletNfts =
     intent.action === "nft"
       ? await getWalletNfts(parsed.walletAddress)
@@ -3004,6 +3180,58 @@ export async function generateAgentReply(rawInput: unknown) {
       intent,
       execution,
       portfolio,
+      understanding: parsedIntentResult.understanding
+    };
+  }
+
+  if (intent.action === "transactions") {
+    if (!parsed.walletConnected || !parsed.walletAddress) {
+      return {
+        text: "Wallet is not connected yet.\n\nConnect a TON wallet and I will show the recent transactions.",
+        intent,
+        understanding: parsedIntentResult.understanding
+      };
+    }
+
+    if (!walletTransactions.length) {
+      return {
+        text: withWalletLine("No recent transactions were found for this wallet right now."),
+        intent,
+        understanding: parsedIntentResult.understanding
+      };
+    }
+
+    const transactionLines = walletTransactions.map((transaction, index) => {
+      const directionLabel =
+        transaction.direction === "in"
+          ? "IN"
+          : transaction.direction === "out"
+            ? "OUT"
+            : "TX";
+      const amountLabel = transaction.amountTon ? `${transaction.amountTon} TON` : "amount unavailable";
+      const counterparty =
+        transaction.direction === "in"
+          ? transaction.from
+          : transaction.to;
+      const when = transaction.timestamp
+        ? new Date(transaction.timestamp * 1000).toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit"
+          })
+        : "time unavailable";
+      const comment = transaction.comment ? `, note: ${transaction.comment}` : "";
+
+      return `• ${index + 1}. ${directionLabel} ${amountLabel}${counterparty ? ` ${transaction.direction === "in" ? "from" : "to"} ${counterparty}` : ""} on ${when}${comment}.`;
+    }).join("\n");
+
+    return {
+      text: withWalletLine(
+        `Recent wallet transactions:\n${transactionLines}`,
+        "If you want, I can also check the balance, tokens, NFTs, or prepare the next transfer."
+      ),
+      intent,
       understanding: parsedIntentResult.understanding
     };
   }

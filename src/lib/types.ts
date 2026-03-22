@@ -7,6 +7,7 @@ export type AgentIntent = {
     | "buy"
     | "send"
     | "balance"
+    | "transactions"
     | "nft"
     | "username_price"
     | "fee_estimate"

@@ -41,7 +41,7 @@ export function getMcpStatusLine(language: "ru" | "en", profile = getTonMcpProfi
 
 export function getCapabilitiesText(language: "ru" | "en", profile = getTonMcpProfile()) {
   const lines = [
-    "I can check wallet balances, show tokens and NFTs, prepare TON transfers and swaps, review tokens and addresses, explain contracts, estimate fees, and look up Telegram username prices."
+    "I can check wallet balances, show recent transactions, show tokens and NFTs, prepare TON transfers and swaps, review tokens and addresses, explain contracts, estimate fees, and look up Telegram username prices."
   ];
 
   if (profile.hackathonMode) {
