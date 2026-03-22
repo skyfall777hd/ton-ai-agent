@@ -644,7 +644,7 @@ export function ChatShell() {
   const [activeNft, setActiveNft] = useState<NftAsset | null>(null);
   const [isPending, startTransition] = useTransition();
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerInputRef = useRef<HTMLInputElement | null>(null);
   const lastMessageRef = useRef<HTMLElement | null>(null);
   const viewportBaseHeightRef = useRef(0);
   const bottomLockTimeoutsRef = useRef<number[]>([]);
@@ -1546,12 +1546,13 @@ export function ChatShell() {
               void sendMessage(draft);
             }}
           >
-            <textarea
+            <input
+              className="composer-input"
               ref={composerInputRef}
+              type="text"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Ask TON AI about your wallet, swap, or username..."
-              rows={1}
             />
             <button
               className="composer-send-button"
